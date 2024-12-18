@@ -1,118 +1,218 @@
-/**
- * Sample React Native App
- * https://github.com/facebook/react-native
- *
- * @format
- */
-
-import React from 'react';
-import type {PropsWithChildren} from 'react';
+import React, {useState, useEffect, useRef} from 'react';
 import {
-  SafeAreaView,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  useColorScheme,
   View,
+  Text,
+  StyleSheet,
+  Alert,
+  TouchableOpacity,
+  Image,
 } from 'react-native';
-
 import {
-  Colors,
-  DebugInstructions,
-  Header,
-  LearnMoreLinks,
-  ReloadInstructions,
-} from 'react-native/Libraries/NewAppScreen';
+  Camera,
+  useCameraDevice,
+} from 'react-native-vision-camera';
+import FaceDetection from './FaceDetection'; // Assuming you have FaceDetection logic
+import {fetchPermissions} from './Utils/globalFunction';
+import {StringText} from './Utils/StringText';
 
-type SectionProps = PropsWithChildren<{
-  title: string;
-}>;
+const App = () => {
+  let frontCam = useCameraDevice('front');
+  let backCam = useCameraDevice('back');
+  const [hasPermission, setHasPermission] = useState(false);
+  const [imageUri, setImageUri] = useState(null);
+  const [faces, setFaces] = useState([]);
+  const [device, setDevice] = useState(frontCam);
+  console.log("dddddddddd",frontCam)
+  const cameraRef = useRef(null);
 
-function Section({children, title}: SectionProps): React.JSX.Element {
-  const isDarkMode = useColorScheme() === 'dark';
-  return (
-    <View style={styles.sectionContainer}>
-      <Text
-        style={[
-          styles.sectionTitle,
+  useEffect(() => {
+    fetchPermissions(result => setHasPermission(result));
+    setDevice(frontCam)
+  }, []);
+
+  const captureSelfie = async () => {
+    if (!cameraRef.current) {
+      Alert.alert('Error', StringText.camReady);
+      return;
+    }
+    try {
+      const photo = await cameraRef.current.takePhoto({
+        flash: device?.position === 'back' ? 'on' : 'off',
+      });
+      setImageUri(photo.path);
+      const faceDetectionResults = await validateSelfie(`file://${photo.path}`);
+      if (faceDetectionResults.length === 1) {
+        Alert.alert('Success', StringText.faceDetected);
+      } else if (faceDetectionResults.length > 1) {
+        Alert.alert(StringText.moreThanOne, StringText.wantProceed, [
           {
-            color: isDarkMode ? Colors.white : Colors.black,
+            text: 'Cancel',
+            onPress: () => setImageUri(null),
+            style: 'cancel',
           },
-        ]}>
-        {title}
-      </Text>
-      <Text
-        style={[
-          styles.sectionDescription,
+          {text: 'OK', onPress: () => {}},
+        ]);
+      } else {
+        Alert.alert(StringText.noFace, StringText.retry, [
           {
-            color: isDarkMode ? Colors.light : Colors.dark,
+            text: 'Cancel',
+            onPress: () => {},
+            style: 'cancel',
           },
-        ]}>
-        {children}
-      </Text>
-    </View>
-  );
-}
-
-function App(): React.JSX.Element {
-  const isDarkMode = useColorScheme() === 'dark';
-
-  const backgroundStyle = {
-    backgroundColor: isDarkMode ? Colors.darker : Colors.lighter,
+          {text: 'Retry', onPress: () => setImageUri(null)},
+        ]);
+      }
+    } catch (error) {
+      console.error('Capture Error:', error);
+    }
   };
 
-  return (
-    <SafeAreaView style={backgroundStyle}>
-      <StatusBar
-        barStyle={isDarkMode ? 'light-content' : 'dark-content'}
-        backgroundColor={backgroundStyle.backgroundColor}
-      />
-      <ScrollView
-        contentInsetAdjustmentBehavior="automatic"
-        style={backgroundStyle}>
-        <Header />
-        <View
-          style={{
-            backgroundColor: isDarkMode ? Colors.black : Colors.white,
-          }}>
-          <Section title="Step One">
-            Edit <Text style={styles.highlight}>App.tsx</Text> to change this
-            screen and then come back to see your edits.
-          </Section>
-          <Section title="See Your Changes">
-            <ReloadInstructions />
-          </Section>
-          <Section title="Debug">
-            <DebugInstructions />
-          </Section>
-          <Section title="Learn More">
-            Read the docs to discover what to do next:
-          </Section>
-          <LearnMoreLinks />
-        </View>
-      </ScrollView>
-    </SafeAreaView>
-  );
-}
+  const validateSelfie = async (imagePath: string) => {
+    try {
+      const facesDetected = await FaceDetection.detect(imagePath, {
+        performanceMode: 'accurate',
+        landmarkMode: 'all',
+        classificationMode: 'all',
+      });
+      if (facesDetected.length === 1) {
+        setFaces(facesDetected);
+      }
+      return facesDetected;
+    } catch (error) {
+      console.error('Face Detection Error:', error);
+      return [];
+    }
+  };
 
-const styles = StyleSheet.create({
-  sectionContainer: {
-    marginTop: 32,
-    paddingHorizontal: 24,
-  },
-  sectionTitle: {
-    fontSize: 24,
-    fontWeight: '600',
-  },
-  sectionDescription: {
-    marginTop: 8,
-    fontSize: 18,
-    fontWeight: '400',
-  },
-  highlight: {
-    fontWeight: '700',
-  },
-});
+  if (!hasPermission) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.permissionText}>{StringText.camAccess}</Text>
+      </View>
+    );
+  }
+console.log(device)
+  if (!device) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.permissionText}>{StringText.camLoad}</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.container}>
+      {imageUri ? (
+        <>
+          <Image
+            style={{height: '88%', width: '100%', alignSelf: 'flex-start'}}
+            source={{uri: `file://${imageUri}`}}
+          />
+          <Text onPress={() => setImageUri(null)} style={styles.retake}>
+            {StringText.reTake}
+          </Text>
+          <TouchableOpacity
+            style={styles.submitView}
+            onPress={() => Alert.alert('', StringText.thanks)}>
+            <Image
+              style={styles.submitViewIcon}
+              source={require('./correct.png')}
+            />
+          </TouchableOpacity>
+        </>
+      ) : (
+        <>
+          <Camera
+            style={styles.camStyle}
+            device={device}
+            isActive={true}
+            photo={true}
+            ref={cameraRef}
+          />
+          <TouchableOpacity
+            onPress={captureSelfie}
+            style={styles.captureButtonView}>
+            <View style={styles.captureInnerView}></View>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() =>
+              device.position == 'front'
+                ? setDevice(backCam)
+                : setDevice(frontCam)
+            }
+            style={styles.captureButton}>
+            <Image
+              style={styles.changeCam}
+              source={require('./change.png')}
+            />
+          </TouchableOpacity>
+        </>
+      )}
+    </View>
+  );
+};
 
 export default App;
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    alignItems: 'center',
+    backgroundColor: '#000',
+  },
+  captureButton: {
+    position: 'absolute',
+    bottom: 20,
+    right: 10,
+  },
+  retake: {
+    position: 'absolute',
+    bottom: 30,
+    padding: 10,
+    backgroundColor: 'white',
+    color: 'black',
+    borderRadius: 5,
+    textAlign: 'center',
+  },
+  permissionText: {
+    color: 'white',
+    fontSize: 16,
+  },
+  submitView: {
+    height: 40,
+    width: 40,
+    right: 10,
+    position: 'absolute',
+    bottom: 30,
+  },
+  submitViewIcon: {
+    height: 40,
+    width: 40,
+    alignSelf: 'center',
+    tintColor: 'white',
+  },
+  camStyle: {height: '88%', width: '100%', alignSelf: 'flex-start'},
+  captureButtonView: {
+    height: 70,
+    width: 70,
+    borderWidth: 3,
+    borderColor: 'white',
+    borderRadius: 50,
+    position: 'absolute',
+    justifyContent: 'center',
+    bottom: 10,
+  },
+  captureInnerView: {
+    height: 55,
+    width: 55,
+    backgroundColor: 'white',
+    alignSelf: 'center',
+    borderRadius: 50,
+  },
+  changeCam:{
+    height: 40,
+    width: 40,
+    alignSelf: 'center',
+    tintColor: 'white',
+  }
+});
