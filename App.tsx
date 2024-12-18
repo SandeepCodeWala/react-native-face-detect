@@ -7,12 +7,8 @@ import {
   TouchableOpacity,
   Image,
 } from 'react-native';
-import {
-  Camera,
-  useCameraDevice,
-} from 'react-native-vision-camera';
-import FaceDetection from './FaceDetection'; // Assuming you have FaceDetection logic
-import {fetchPermissions} from './Utils/globalFunction';
+import {Camera, useCameraDevice} from 'react-native-vision-camera';
+import {fetchPermissions, validateSelfie} from './Utils/globalFunction';
 import {StringText} from './Utils/StringText';
 
 const App = () => {
@@ -22,13 +18,12 @@ const App = () => {
   const [imageUri, setImageUri] = useState(null);
   const [faces, setFaces] = useState([]);
   const [device, setDevice] = useState(frontCam);
-  console.log("dddddddddd",frontCam)
   const cameraRef = useRef(null);
 
   useEffect(() => {
     fetchPermissions(result => setHasPermission(result));
-    setDevice(frontCam)
-  }, []);
+    setDevice(frontCam);
+  }, [hasPermission]);
 
   const captureSelfie = async () => {
     if (!cameraRef.current) {
@@ -40,7 +35,10 @@ const App = () => {
         flash: device?.position === 'back' ? 'on' : 'off',
       });
       setImageUri(photo.path);
-      const faceDetectionResults = await validateSelfie(`file://${photo.path}`);
+      const faceDetectionResults = await validateSelfie(
+        `file://${photo.path}`,
+        result => setFaces(result as never[]),
+      );
       if (faceDetectionResults.length === 1) {
         Alert.alert('Success', StringText.faceDetected);
       } else if (faceDetectionResults.length > 1) {
@@ -67,23 +65,6 @@ const App = () => {
     }
   };
 
-  const validateSelfie = async (imagePath: string) => {
-    try {
-      const facesDetected = await FaceDetection.detect(imagePath, {
-        performanceMode: 'accurate',
-        landmarkMode: 'all',
-        classificationMode: 'all',
-      });
-      if (facesDetected.length === 1) {
-        setFaces(facesDetected);
-      }
-      return facesDetected;
-    } catch (error) {
-      console.error('Face Detection Error:', error);
-      return [];
-    }
-  };
-
   if (!hasPermission) {
     return (
       <View style={styles.container}>
@@ -91,7 +72,6 @@ const App = () => {
       </View>
     );
   }
-console.log(device)
   if (!device) {
     return (
       <View style={styles.container}>
@@ -141,10 +121,7 @@ console.log(device)
                 : setDevice(frontCam)
             }
             style={styles.captureButton}>
-            <Image
-              style={styles.changeCam}
-              source={require('./change.png')}
-            />
+            <Image style={styles.changeCam} source={require('./change.png')} />
           </TouchableOpacity>
         </>
       )}
@@ -209,10 +186,10 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     borderRadius: 50,
   },
-  changeCam:{
+  changeCam: {
     height: 40,
     width: 40,
     alignSelf: 'center',
     tintColor: 'white',
-  }
+  },
 });
